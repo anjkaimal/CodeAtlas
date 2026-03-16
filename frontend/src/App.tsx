@@ -4,23 +4,46 @@ import RepoSummary from "./components/RepoSummary";
 import DependencyGraph from "./components/DependencyGraph";
 import ChatBox from "./components/ChatBox";
 import FeatureAssistantPanel from "./components/FeatureAssistantPanel";
-import { analyzeRepoByUrl, type AnalyzeRepoResponse } from "./api/client";
+import {
+  analyzeRepoByUrl,
+  generateSummary,
+  type AnalyzeRepoResponse,
+  type RepoSummary as RepoSummaryType,
+} from "./api/client";
 
 export default function App() {
   const [repoUrl, setRepoUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [summaryLoading, setSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalyzeRepoResponse | null>(null);
+  const [summary, setSummary] = useState<RepoSummaryType | null>(null);
 
-  const hasAnalysis = useMemo(() => Boolean(analysis?.workspace_path), [analysis]);
+  const workspacePath = analysis?.workspace_path ?? null;
+  const hasAnalysis = useMemo(() => Boolean(workspacePath), [workspacePath]);
 
   async function onAnalyze() {
     setError(null);
+    setSummaryError(null);
     setLoading(true);
     setAnalysis(null);
+    setSummary(null);
     try {
       const out = await analyzeRepoByUrl(repoUrl.trim());
       setAnalysis(out);
+
+      if (out.workspace_path) {
+        setSummaryLoading(true);
+        try {
+          const s = await generateSummary(out.workspace_path);
+          setSummary(s);
+        } catch (e: any) {
+          setSummaryError(e?.message || String(e));
+        } finally {
+          setSummaryLoading(false);
+        }
+      }
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -51,6 +74,9 @@ export default function App() {
               <input
                 value={repoUrl}
                 onChange={(e) => setRepoUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !loading && repoUrl.trim()) onAnalyze();
+                }}
                 placeholder="https://github.com/owner/repo"
                 className="w-full rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60"
               />
@@ -61,7 +87,7 @@ export default function App() {
                   disabled={loading || repoUrl.trim().length === 0}
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {loading ? "Analyzing…" : "Start analysis"}
+                  {loading ? "Analyzing…" : summaryLoading ? "Generating summary…" : "Start analysis"}
                 </button>
                 <div className="text-xs text-slate-400">
                   Calls <code className="text-slate-300">/api/repos/analyze</code>
@@ -86,32 +112,30 @@ export default function App() {
           </Panel>
 
           <div className="mt-5">
-            <FeatureAssistantPanel disabled={!hasAnalysis} />
+            <FeatureAssistantPanel disabled={!hasAnalysis} workspacePath={workspacePath} />
           </div>
         </section>
 
         <section className="lg:col-span-8 space-y-5">
-          <RepoSummary summary={analysis?.summary} repoUrl={repoUrl} workspacePath={analysis?.workspace_path} />
+          <RepoSummary
+            summary={summary}
+            summaryLoading={summaryLoading}
+            summaryError={summaryError}
+            repoUrl={repoUrl}
+            workspacePath={workspacePath}
+          />
 
           <Panel title="Dependency graph">
-            <DependencyGraph graph={analysis?.graph as any} />
-            {!analysis?.graph ? (
-              <div className="mt-3 text-xs text-slate-400">
-                Graph data isn’t returned by the backend yet. Next step: we’ll update the backend to run
-                <code className="mx-1 text-slate-300">repo_scanner</code> + <code className="text-slate-300">graph_builder</code>
-                and return a React Flow graph.
-              </div>
-            ) : null}
+            <DependencyGraph graph={analysis?.graph} />
           </Panel>
 
-          <ChatBox disabled={!hasAnalysis} />
+          <ChatBox disabled={!hasAnalysis} workspacePath={workspacePath} />
         </section>
       </main>
 
       <footer className="mx-auto max-w-7xl px-5 pb-8 text-xs text-slate-500">
-        MVP UI scaffold — next we’ll connect AI summary, Q&A, and feature assistant endpoints.
+        CodeAtlas — AI-powered repository explorer
       </footer>
     </div>
   );
 }
-

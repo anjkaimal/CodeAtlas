@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 import Panel from "./ui/Panel";
 
 type ChatMessage = {
@@ -6,28 +6,68 @@ type ChatMessage = {
   content: string;
 };
 
-export default function ChatBox(props: { disabled?: boolean }) {
+export default function ChatBox({
+  disabled,
+  workspacePath,
+}: {
+  disabled?: boolean;
+  workspacePath?: string | null;
+}) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content: "Ask a question about the repo (we’ll connect this to the backend next)."
-    }
+      content: "Ask a question about the analyzed repository.",
+    },
   ]);
   const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const canSend = useMemo(() => !props.disabled && input.trim().length > 0, [props.disabled, input]);
+  const canSend = useMemo(
+    () => !disabled && !loading && input.trim().length > 0,
+    [disabled, loading, input],
+  );
 
-  function onSend() {
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  async function onSend() {
     if (!canSend) return;
     const q = input.trim();
     setInput("");
-    setMessages((m) => [...m, { role: "user", content: q }, { role: "assistant", content: "Not wired yet." }]);
+    setMessages((m) => [...m, { role: "user", content: q }]);
+    setLoading(true);
+
+    try {
+      const apiBase = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
+      const res = await fetch(`${apiBase}/api/repos/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace_path: workspacePath, question: q }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        const detail = json?.detail || `Error ${res.status}`;
+        setMessages((m) => [...m, { role: "assistant", content: `Error: ${detail}` }]);
+      } else {
+        const data = await res.json();
+        setMessages((m) => [...m, { role: "assistant", content: data?.answer || "No answer returned." }]);
+      }
+    } catch (e: any) {
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: `Could not reach the backend: ${e?.message || String(e)}` },
+      ]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
     <Panel
       title="Q&A"
-      right={props.disabled ? <span className="text-xs text-slate-400">Run analysis first</span> : null}
+      right={disabled ? <span className="text-xs text-slate-400">Run analysis first</span> : null}
     >
       <div className="flex flex-col gap-3">
         <div className="max-h-[240px] overflow-auto rounded-lg border border-slate-800 bg-slate-950/30 p-3">
@@ -46,6 +86,14 @@ export default function ChatBox(props: { disabled?: boolean }) {
                 </div>
               </div>
             ))}
+            {loading ? (
+              <div className="text-left">
+                <div className="inline-block rounded-2xl bg-slate-900 border border-slate-800 px-3 py-2 text-sm text-slate-400">
+                  Thinking…
+                </div>
+              </div>
+            ) : null}
+            <div ref={bottomRef} />
           </div>
         </div>
 
@@ -56,7 +104,7 @@ export default function ChatBox(props: { disabled?: boolean }) {
             onKeyDown={(e) => {
               if (e.key === "Enter") onSend();
             }}
-            disabled={props.disabled}
+            disabled={disabled}
             placeholder="Where is authentication handled?"
             className="w-full rounded-lg border border-slate-800 bg-slate-950/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/60 disabled:opacity-60"
           />
@@ -72,4 +120,3 @@ export default function ChatBox(props: { disabled?: boolean }) {
     </Panel>
   );
 }
-

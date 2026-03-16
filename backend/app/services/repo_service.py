@@ -9,26 +9,32 @@ from fastapi import UploadFile
 
 from app.utils.file_tree import build_file_tree
 from app.utils.git_utils import clone_github_repo, create_repo_workspace
+from graph_builder import build_react_flow_graph
+from repo_scanner import scan_repo
 
 
 def analyze_github_repo(repo_url: str) -> dict:
     """
-    Clone a GitHub repository and return its file tree.
+    Clone a GitHub repository, scan it, build a dependency graph, and return results.
     """
     workspace = clone_github_repo(repo_url)
     tree = build_file_tree(workspace)
-    return {"workspace_path": str(workspace), "tree": tree}
+    scan = scan_repo(workspace)
+    graph = build_react_flow_graph(scan)
+    return {
+        "workspace_path": str(workspace),
+        "tree": tree,
+        "scan": scan,
+        "graph": graph,
+    }
 
 
 async def analyze_uploaded_zip(zip_file: UploadFile) -> dict:
     """
-    Save an uploaded ZIP file, extract it into a workspace, and return its file tree.
+    Save an uploaded ZIP file, extract it into a workspace, scan it, and return results.
     """
     workspace = create_repo_workspace(zip_file.filename or "upload")
 
-    # Save to a temporary file before extraction
-    # NOTE: On Windows, reopening a NamedTemporaryFile while it's still open
-    # can fail with PermissionError. Use delete=False and clean up manually.
     tmp_path: Optional[str] = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
@@ -45,9 +51,14 @@ async def analyze_uploaded_zip(zip_file: UploadFile) -> dict:
             try:
                 Path(tmp_path).unlink(missing_ok=True)
             except OSError:
-                # Best-effort cleanup; leave the file if locked by antivirus, etc.
                 pass
 
     tree = build_file_tree(workspace)
-    return {"workspace_path": str(workspace), "tree": tree}
-
+    scan = scan_repo(workspace)
+    graph = build_react_flow_graph(scan)
+    return {
+        "workspace_path": str(workspace),
+        "tree": tree,
+        "scan": scan,
+        "graph": graph,
+    }
