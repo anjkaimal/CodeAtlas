@@ -2,21 +2,21 @@ import { useMemo, useState } from "react";
 import { suggestFeature, type FeatureAssistantResponse, type FeatureSuggestion } from "../api/client";
 
 const CONFIDENCE_BADGE: Record<string, { bg: string; text: string; label: string }> = {
-  high:   { bg: "bg-green-950/60 border-green-800/60",  text: "text-green-400",  label: "High confidence" },
-  medium: { bg: "bg-yellow-950/60 border-yellow-800/60", text: "text-yellow-400", label: "Medium confidence" },
-  low:    { bg: "bg-slate-800/60 border-slate-700",       text: "text-slate-400",  label: "Low confidence" },
+  high:   { bg: "bg-green-50 border-green-200",    text: "text-green-600",   label: "High confidence" },
+  medium: { bg: "bg-amber-50 border-amber-200",    text: "text-amber-600",   label: "Medium confidence" },
+  low:    { bg: "bg-gray-50 border-gray-200",      text: "text-gray-500",    label: "Low confidence" },
 };
 
 function SuggestionCard({ s, index }: { s: FeatureSuggestion; index: number }) {
   const badge = CONFIDENCE_BADGE[s.confidence] ?? CONFIDENCE_BADGE.low;
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
+    <div className="rounded-2xl border border-gray-100 bg-white card-shadow p-5 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600/20 text-xs font-bold text-indigo-400">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-100 text-xs font-bold text-violet-600">
             {index + 1}
           </span>
-          <code className="text-sm font-mono text-indigo-300 break-all">{s.file_path}</code>
+          <code className="text-sm font-mono text-violet-600 break-all">{s.file_path}</code>
         </div>
         <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-medium ${badge.bg} ${badge.text}`}>
           {badge.label}
@@ -24,19 +24,19 @@ function SuggestionCard({ s, index }: { s: FeatureSuggestion; index: number }) {
       </div>
 
       {(s.insertion?.name || s.insertion?.anchor) && (
-        <div className="flex items-center gap-2 rounded-lg bg-slate-950/60 px-3 py-2">
-          <svg className="h-3.5 w-3.5 shrink-0 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <div className="flex items-center gap-2 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2">
+          <svg className="h-3.5 w-3.5 shrink-0 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
           </svg>
-          <span className="text-xs text-slate-400">
+          <span className="text-xs text-gray-500">
             {s.insertion.type}:{" "}
-            <span className="text-slate-200 font-medium">{s.insertion.name || s.insertion.anchor}</span>
-            {s.insertion.line && <span className="ml-1.5 text-slate-500">· line {s.insertion.line}</span>}
+            <span className="text-gray-800 font-medium">{s.insertion.name || s.insertion.anchor}</span>
+            {s.insertion.line && <span className="ml-1.5 text-gray-400">· line {s.insertion.line}</span>}
           </span>
         </div>
       )}
 
-      <p className="text-sm text-slate-300 leading-relaxed">{s.explanation}</p>
+      <p className="text-sm text-gray-600 leading-relaxed">{s.explanation}</p>
     </div>
   );
 }
@@ -82,27 +82,25 @@ export default function FeatureAssistantPanel({
 
   return (
     <div className="flex flex-col gap-5">
-      {/* Input card */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-5">
-        <div className="space-y-3">
-          <label className="text-xs font-medium text-slate-400">Describe the feature you want to implement</label>
+      <div className="rounded-2xl border border-gray-100 bg-white card-shadow p-5">
+        <div className="space-y-4">
+          <label className="text-sm font-semibold text-gray-700">Describe the feature you want to implement</label>
           <textarea
             value={request}
             onChange={(e) => setRequest(e.target.value)}
             disabled={disabled}
             rows={4}
             placeholder='e.g. "Add rate limiting to all API endpoints using Redis"'
-            className="w-full resize-none rounded-lg border border-slate-700 bg-slate-950/60 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-600 focus:border-indigo-500/50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-60"
+            className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 placeholder:text-gray-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100 disabled:opacity-60"
           />
 
-          {/* Example chips */}
           {!request && (
             <div className="flex flex-wrap gap-2">
               {EXAMPLE_FEATURES.map((ex) => (
                 <button
                   key={ex}
                   onClick={() => setRequest(ex)}
-                  className="rounded-full border border-slate-700 bg-slate-800/60 px-3 py-1 text-xs text-slate-400 transition-colors hover:border-indigo-600/50 hover:text-indigo-300"
+                  className="rounded-full border border-gray-200 bg-gray-50 hover:bg-violet-50 hover:border-violet-200 hover:text-violet-600 px-3 py-1.5 text-xs text-gray-500 transition-colors"
                 >
                   {ex}
                 </button>
@@ -113,7 +111,7 @@ export default function FeatureAssistantPanel({
           <button
             onClick={onSuggest}
             disabled={!canRun}
-            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-full bg-violet-600 px-6 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
           >
             {loading ? (
               <>
@@ -132,25 +130,21 @@ export default function FeatureAssistantPanel({
         </div>
       </div>
 
-      {/* Error */}
       {error && (
-        <div className="rounded-xl border border-rose-900/50 bg-rose-950/30 p-4 text-sm text-rose-300">
+        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-600">
           {error}
         </div>
       )}
 
-      {/* Results */}
       {result && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-200">
+            <h3 className="text-sm font-bold text-gray-800">
               {result.suggestions?.length
                 ? `${result.suggestions.length} suggested location${result.suggestions.length === 1 ? "" : "s"}`
                 : "No suggestions returned"}
             </h3>
-            {result.model && (
-              <span className="text-xs text-slate-600">via {result.model}</span>
-            )}
+            {result.model && <span className="text-xs text-gray-400">via {result.model}</span>}
           </div>
 
           {(result.suggestions || []).map((s, i) => (
@@ -158,8 +152,8 @@ export default function FeatureAssistantPanel({
           ))}
 
           {result.questions?.length ? (
-            <div className="rounded-xl border border-slate-700/60 bg-slate-900/40 p-4">
-              <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-400">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+              <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-blue-600">
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -167,14 +161,14 @@ export default function FeatureAssistantPanel({
               </div>
               <ul className="space-y-1.5">
                 {result.questions.map((q, i) => (
-                  <li key={i} className="text-xs text-slate-400 pl-2 border-l border-slate-700">{q}</li>
+                  <li key={i} className="text-xs text-blue-700 pl-2 border-l-2 border-blue-200">{q}</li>
                 ))}
               </ul>
             </div>
           ) : null}
 
           {result.notes?.length ? (
-            <div className="text-xs text-slate-600 pl-1">{result.notes.join(" · ")}</div>
+            <div className="text-xs text-gray-400 pl-1">{result.notes.join(" · ")}</div>
           ) : null}
         </div>
       )}

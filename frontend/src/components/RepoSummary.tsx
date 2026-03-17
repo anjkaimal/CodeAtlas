@@ -12,95 +12,103 @@ type Props = {
 export default function RepoSummary({ summary, summaryLoading, summaryError, repoUrl, workspacePath }: Props) {
   return (
     <Panel
-      title="Repo summary"
+      title="Repository Summary"
       right={
         repoUrl ? (
-          <span className="text-xs text-slate-400 truncate max-w-[240px]">{repoUrl}</span>
+          <a href={repoUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-violet-600 hover:text-violet-500 transition-colors">
+            Full Documentation →
+          </a>
         ) : null
       }
     >
       {summaryLoading ? (
-        <div className="flex items-center gap-2 text-sm text-slate-400">
-          <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-500 border-t-indigo-400" />
+        <div className="flex items-center gap-3 py-4 text-sm text-gray-500">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-violet-500" />
           Generating AI summary…
         </div>
       ) : summaryError ? (
-        <div className="space-y-2 text-sm">
-          <div className="rounded-lg border border-amber-900/50 bg-amber-950/30 p-3 text-amber-200">
+        <div className="space-y-3 text-sm">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-700">
             {summaryError}
           </div>
-          {workspacePath ? (
-            <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-              <div className="text-xs font-semibold text-slate-300">Workspace</div>
-              <div className="mt-1 break-all text-xs text-slate-400">{workspacePath}</div>
+          {workspacePath && (
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+              <div className="text-xs font-semibold text-gray-600">Workspace path</div>
+              <div className="mt-1 break-all text-xs text-gray-400">{workspacePath}</div>
             </div>
-          ) : null}
+          )}
         </div>
       ) : !summary ? (
-        <div className="text-sm text-slate-300">
-          <div className="font-medium text-slate-100">No AI summary yet.</div>
-          <div className="mt-2 text-slate-400">
-            Analyze a repository to generate an AI-powered architectural summary.
+        <div className="py-6 text-center text-sm text-gray-400">
+          <div className="text-3xl mb-3">📦</div>
+          <div className="font-medium text-gray-600 mb-1">No AI summary yet.</div>
+          <div className="text-gray-400 text-xs max-w-xs mx-auto">
+            Analyze a repository above to generate an AI-powered architectural summary.
           </div>
-          {workspacePath ? (
-            <div className="mt-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-              <div className="text-xs font-semibold text-slate-300">Workspace</div>
-              <div className="mt-1 break-all text-xs text-slate-400">{workspacePath}</div>
-            </div>
-          ) : null}
         </div>
       ) : (
-        <div className="space-y-4 text-sm">
-          <div>
-            <div className="text-xs font-semibold text-slate-300">Project purpose</div>
-            <div className="mt-1 text-slate-100">{summary.project_purpose || "—"}</div>
-          </div>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div>
-              <div className="text-xs font-semibold text-slate-300">Entry points</div>
-              <ul className="mt-1 list-disc pl-5 text-slate-200">
-                {(summary.entry_points || []).slice(0, 8).map((p) => (
-                  <li key={p} className="break-all">{p}</li>
-                ))}
-              </ul>
+        <div className="space-y-5 text-sm">
+          <p className="text-gray-600 leading-relaxed">{summary.project_purpose || "—"}</p>
+
+          {(summary.major_modules?.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {summary.major_modules.slice(0, 2).map((m, idx) => (
+                <div
+                  key={m?.name || idx}
+                  className={`rounded-xl p-4 border ${idx === 0 ? "border-green-100 bg-green-50" : "border-amber-100 bg-amber-50"}`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className={`h-2 w-2 rounded-full ${idx === 0 ? "bg-green-500" : "bg-amber-500"}`} />
+                    <span className="font-semibold text-gray-800 text-xs">{m?.name || "—"}</span>
+                  </div>
+                  {m?.reason && <p className="text-xs text-gray-500 leading-relaxed">{m.reason}</p>}
+                  {Array.isArray(m?.paths) && m.paths.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-400 font-mono break-all">{m.paths.slice(0, 2).join(", ")}</div>
+                  )}
+                </div>
+              ))}
             </div>
+          )}
+
+          {summary.tech_stack?.length > 0 && (
             <div>
-              <div className="text-xs font-semibold text-slate-300">Tech stack</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(summary.tech_stack || []).slice(0, 12).map((t) => (
-                  <span
-                    key={t}
-                    className="rounded-full border border-slate-700 bg-slate-950/60 px-2 py-1 text-xs text-slate-200"
-                  >
+              <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Tech Stack</div>
+              <div className="flex flex-wrap gap-2">
+                {summary.tech_stack.slice(0, 10).map((t) => (
+                  <span key={t} className="rounded-full bg-violet-50 border border-violet-100 text-violet-600 px-2.5 py-1 text-xs font-medium">
                     {t}
                   </span>
                 ))}
               </div>
             </div>
-          </div>
-          <div>
-            <div className="text-xs font-semibold text-slate-300">Major modules</div>
-            <div className="mt-2 space-y-2">
-              {(summary.major_modules || []).slice(0, 6).map((m, idx) => (
-                <div key={m?.name || idx} className="rounded-lg border border-slate-800 bg-slate-950/40 p-3">
-                  <div className="font-semibold text-slate-100">{m?.name || "—"}</div>
-                  {Array.isArray(m?.paths) && m.paths.length ? (
-                    <div className="mt-1 text-xs text-slate-400 break-all">{m.paths.join(", ")}</div>
-                  ) : null}
-                  {m?.reason ? <div className="mt-2 text-xs text-slate-300">{m.reason}</div> : null}
-                </div>
-              ))}
-            </div>
-          </div>
-          {summary.notes?.length ? (
+          )}
+
+          {summary.entry_points?.length > 0 && (
             <div>
-              <div className="text-xs font-semibold text-slate-300">Notes</div>
-              <ul className="mt-1 list-disc pl-5 text-xs text-slate-400">
-                {summary.notes.map((n, i) => <li key={i}>{n}</li>)}
+              <div className="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Entry Points</div>
+              <div className="space-y-1">
+                {summary.entry_points.slice(0, 5).map((p) => (
+                  <div key={p} className="flex items-center gap-2 text-xs text-gray-600">
+                    <div className="h-1 w-1 rounded-full bg-gray-400" />
+                    <code className="font-mono break-all">{p}</code>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {summary.notes?.length > 0 && (
+            <div className="rounded-xl bg-blue-50 border border-blue-100 p-3">
+              <div className="text-xs font-semibold text-blue-600 mb-1.5">Notes</div>
+              <ul className="space-y-1">
+                {summary.notes.map((n, i) => (
+                  <li key={i} className="text-xs text-blue-700 leading-relaxed">{n}</li>
+                ))}
               </ul>
             </div>
-          ) : null}
-          <div className="text-xs text-slate-500">Model: {summary.model}</div>
+          )}
+
+          <div className="text-xs text-gray-300">Model: {summary.model}</div>
         </div>
       )}
     </Panel>

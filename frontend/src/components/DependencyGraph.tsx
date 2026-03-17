@@ -90,7 +90,7 @@ const ArchFileNode: React.FC<NodeProps> = ({ data }) => {
       style={{
         width: COL_W,
         minHeight: NODE_H,
-        background: "rgba(15,23,42,0.85)",
+        background: "white",
         border: `1.5px solid ${borderColor}`,
         borderLeft: `3px solid ${borderColor}`,
         borderRadius: 8,
@@ -98,7 +98,7 @@ const ArchFileNode: React.FC<NodeProps> = ({ data }) => {
         display: "flex",
         flexDirection: "column",
         gap: 4,
-        backdropFilter: "blur(4px)",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
         cursor: "default",
       }}
     >
@@ -122,7 +122,7 @@ const ArchFileNode: React.FC<NodeProps> = ({ data }) => {
           style={{
             fontSize: 12,
             fontWeight: 600,
-            color: "#f1f5f9",
+            color: "#1e293b",
             lineHeight: 1.3,
             wordBreak: "break-word" as const,
           }}
@@ -153,19 +153,20 @@ const ArchFileNode: React.FC<NodeProps> = ({ data }) => {
             fontSize: 9,
             padding: "1px 5px",
             borderRadius: 4,
-            background: "rgba(71,85,105,0.4)",
-            color: "#94a3b8",
+            background: "#f1f5f9",
+            color: "#64748b",
+            border: "1px solid #e2e8f0",
           }}
         >
           {node.language}
         </span>
         {node.inDegree > 0 && (
-          <span style={{ fontSize: 9, color: "#64748b" }}>
+          <span style={{ fontSize: 9, color: "#94a3b8" }}>
             ↙ {node.inDegree}
           </span>
         )}
         {node.outDegree > 0 && (
-          <span style={{ fontSize: 9, color: "#64748b" }}>
+          <span style={{ fontSize: 9, color: "#94a3b8" }}>
             ↗ {node.outDegree}
           </span>
         )}
@@ -188,13 +189,13 @@ function emptyState(title: string, hint: string) {
   return (
     <div
       style={{ height: "100%", width: "100%" }}
-      className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 text-center"
+      className="flex flex-col items-center justify-center gap-2 text-center p-8"
     >
-      <svg className="h-8 w-8 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <svg className="h-8 w-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
       </svg>
-      <div className="text-sm font-medium text-slate-400">{title}</div>
-      {hint && <div className="text-xs text-slate-600 max-w-xs">{hint}</div>}
+      <div className="text-sm font-medium text-gray-400">{title}</div>
+      {hint && <div className="text-xs text-gray-300 max-w-xs">{hint}</div>}
     </div>
   );
 }
@@ -205,9 +206,10 @@ interface Props {
     dependencies?: unknown[];
     [key: string]: unknown;
   };
+  compact?: boolean;
 }
 
-export default function DependencyGraph({ scan }: Props) {
+export default function DependencyGraph({ scan, compact }: Props) {
   const archGraph = useMemo(() => {
     if (!scan) return null;
     return buildArchGraph(scan as Parameters<typeof buildArchGraph>[0]);
@@ -280,8 +282,8 @@ export default function DependencyGraph({ scan }: Props) {
 
   return (
     <div style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-      <SummaryCard archGraph={archGraph} />
-      <div style={{ flex: 1 }} className="rounded-xl overflow-hidden border border-slate-800">
+      {!compact && <SummaryCard archGraph={archGraph} />}
+      <div style={{ flex: 1 }}>
         <ReactFlow
           nodes={rfNodes}
           edges={rfEdges}
@@ -292,20 +294,22 @@ export default function DependencyGraph({ scan }: Props) {
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
         >
-          <Background color="#1e293b" gap={24} size={1} />
+          <Background color="#e2e8f0" gap={24} size={1} />
           <Controls
-            style={{ background: "rgba(15,23,42,0.8)", border: "1px solid #1e293b", borderRadius: 8 }}
+            style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}
             showInteractive={false}
           />
-          <MiniMap
-            style={{ background: "rgba(15,23,42,0.9)", border: "1px solid #1e293b", borderRadius: 8 }}
-            nodeColor={(n) => {
-              if (n.type === "laneHeader") return "transparent";
-              const node = n.data?.node as ArchNode | undefined;
-              return node ? LAYER_CONFIG[node.layer].borderColor : "#475569";
-            }}
-            maskColor="rgba(2,6,23,0.7)"
-          />
+          {!compact && (
+            <MiniMap
+              style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 8 }}
+              nodeColor={(n) => {
+                if (n.type === "laneHeader") return "transparent";
+                const node = n.data?.node as ArchNode | undefined;
+                return node ? LAYER_CONFIG[node.layer].borderColor : "#94a3b8";
+              }}
+              maskColor="rgba(241,245,249,0.7)"
+            />
+          )}
         </ReactFlow>
       </div>
     </div>
@@ -314,18 +318,18 @@ export default function DependencyGraph({ scan }: Props) {
 
 function SummaryCard({ archGraph }: { archGraph: ReturnType<typeof buildArchGraph> }) {
   return (
-    <div className="flex items-start gap-4 rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
+    <div className="flex items-start gap-4 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1.5">
-          <span className="text-xs font-semibold text-slate-200">Architecture Overview</span>
-          <span className="text-xs text-slate-600">·</span>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs font-semibold text-gray-700">Architecture Overview</span>
+          <span className="text-xs text-gray-300">·</span>
+          <span className="text-xs text-gray-400">
             {archGraph.stats.shownFiles} of {archGraph.stats.totalFiles} files
           </span>
-          <span className="text-xs text-slate-600">·</span>
-          <span className="text-xs text-slate-500">{archGraph.stats.shownEdges} connections</span>
+          <span className="text-xs text-gray-300">·</span>
+          <span className="text-xs text-gray-400">{archGraph.stats.shownEdges} connections</span>
         </div>
-        <p className="text-xs text-slate-400 leading-relaxed">{archGraph.summary}</p>
+        <p className="text-xs text-gray-500 leading-relaxed">{archGraph.summary}</p>
       </div>
       <div className="flex flex-wrap gap-1.5 shrink-0 max-w-xs">
         {archGraph.layers.map(layer => {
