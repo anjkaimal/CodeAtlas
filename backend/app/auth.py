@@ -8,12 +8,14 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import hashlib
+import hmac as _hmac
+
 import requests as http_requests
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from jose import jwt
-from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 from app.db import (
     create_email_user,
@@ -24,7 +26,7 @@ from app.db import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_PBKDF2_ITERS = 600_000
 
 REPL_ID = os.environ.get("REPL_ID", "")
 ISSUER_URL = os.environ.get("ISSUER_URL", "https://replit.com/oidc")
@@ -39,11 +41,20 @@ _pkce_store: dict[str, str] = {}
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    salt = os.urandom(32)
+    key = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt, _PBKDF2_ITERS)
+    return salt.hex() + ":" + key.hex()
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+def verify_password(plain: str, stored: str) -> bool:
+    try:
+        salt_hex, key_hex = stored.split(":", 1)
+        salt = bytes.fromhex(salt_hex)
+        expected = bytes.fromhex(key_hex)
+        actual = hashlib.pbkdf2_hmac("sha256", plain.encode(), salt, _PBKDF2_ITERS)
+        return _hmac.compare_digest(actual, expected)
+    except Exception:
+        return False
 
 
 def create_jwt(user_id: int, email: str, name: Optional[str], picture: Optional[str]) -> str:
@@ -88,10 +99,12 @@ async def register(req: RegisterRequest):
 @router.post("/login")
 async def login_email(req: LoginRequest):
     user = get_user_by_email(req.email.lower())
-    if not user or not user.get("password_hash"):
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    if not user:
+        raise HTTPException(status_code=401, detail="No account found with that email address. Please sign up first.")
+    if not user.get("password_hash"):
+        raise HTTPException(status_code=401, detail="This account uses Google sign-in. Please use the 'Continue with Google' button.")
     if not verify_password(req.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
+        raise HTTPException(status_code=401, detail="Incorrect password, please try again.")
     token = create_jwt(user["id"], user["email"], user["name"], user.get("picture"))
     return {"token": token, "user": _safe_user(user)}
 
