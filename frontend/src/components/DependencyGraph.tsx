@@ -157,8 +157,8 @@ interface Props {
 export default function DependencyGraph({ scan, compact }: Props) {
   const archGraph = useMemo(() => {
     if (!scan) return null;
-    return buildArchGraph(scan as Parameters<typeof buildArchGraph>[0], compact ? 16 : 30);
-  }, [scan, compact]);
+    return buildArchGraph(scan as Parameters<typeof buildArchGraph>[0], 20);
+  }, [scan]);
 
   const { nodes: rfNodes, edges: rfEdges } = useMemo(() => {
     if (!archGraph || archGraph.nodes.length === 0) return { nodes: [], edges: [] };
