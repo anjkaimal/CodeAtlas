@@ -43,7 +43,8 @@ Both are started together via `bash start.sh`.
 - `frontend/src/App.tsx` — Root component; orchestrates analysis + summary auto-fetch
 - `frontend/src/api/client.ts` — Typed API client (all fetch calls)
 - `frontend/src/components/RepoSummary.tsx` — Renders AI summary with loading states
-- `frontend/src/components/DependencyGraph.tsx` — React Flow graph with auto-layout
+- `frontend/src/utils/archGraph.ts` — File classifier + arch graph builder (layers, scoring, summary)
+- `frontend/src/components/DependencyGraph.tsx` — Architecture visualization: layered swimlane view with custom nodes, layer-color coding, and summary card
 - `frontend/src/components/FeatureAssistantPanel.tsx` — Feature location UI wired to backend
 - `frontend/src/components/ChatBox.tsx` — Q&A chat wired to backend
 - `frontend/vite.config.ts` — Port 5000, host 0.0.0.0, allowedHosts: true
@@ -58,7 +59,7 @@ cd backend && pip install -r requirements.txt
 cd frontend && npm install
 
 # Set your OpenAI key
-export OPENAI_API_KEY=sk-...
+export OPENAI_API_KEY=your-openai-api-key-here
 
 # Start everything
 bash start.sh

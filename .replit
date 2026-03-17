@@ -41,3 +41,7 @@ exposeLocalhost = true
 [deployment]
 deploymentTarget = "vm"
 run = ["bash", "start.sh"]
+
+[userenv]
+
+[userenv.shared]

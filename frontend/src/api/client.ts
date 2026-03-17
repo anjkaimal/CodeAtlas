@@ -48,12 +48,6 @@ export type FeatureAssistantResponse = {
   raw: string;
 };
 
-const DEFAULT_API_BASE = "http://127.0.0.1:8000";
-
-export function getApiBase(): string {
-  return import.meta.env.VITE_API_BASE || DEFAULT_API_BASE;
-}
-
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = `Request failed: ${res.status}`;
@@ -72,17 +66,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
 export async function analyzeRepoByUrl(repoUrl: string): Promise<AnalyzeRepoResponse> {
   const fd = new FormData();
   fd.append("repo_url", repoUrl);
-  const res = await fetch(`${getApiBase()}/api/repos/analyze`, {
+  const res = await fetch("/api/repos/analyze", {
     method: "POST",
     body: fd,
   });
   return handleResponse<AnalyzeRepoResponse>(res);
 }
 
-export async function generateSummary(
-  workspacePath: string,
-): Promise<RepoSummary> {
-  const res = await fetch(`${getApiBase()}/api/repos/summary`, {
+export async function generateSummary(workspacePath: string): Promise<RepoSummary> {
+  const res = await fetch("/api/repos/summary", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ workspace_path: workspacePath }),
@@ -94,7 +86,7 @@ export async function suggestFeature(
   workspacePath: string,
   featureRequest: string,
 ): Promise<FeatureAssistantResponse> {
-  const res = await fetch(`${getApiBase()}/api/repos/feature`, {
+  const res = await fetch("/api/repos/feature", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ workspace_path: workspacePath, feature_request: featureRequest }),

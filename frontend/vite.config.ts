@@ -11,5 +11,15 @@ export default defineConfig({
       clientPort: 443,
       protocol: "wss",
     },
+    proxy: {
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/health": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+    },
   },
 });

@@ -1,1 +1,25 @@
+# Environment & secrets
+.env
+.env.local
+.env.production
 backend/.env
+*.env
+
+# Cloned/uploaded repository workspaces (runtime data, not source)
+backend/repos/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pythonlibs/
+.venv/
+venv/
+
+# Node
+node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
