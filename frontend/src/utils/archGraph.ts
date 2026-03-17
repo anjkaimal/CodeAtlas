@@ -44,6 +44,7 @@ export interface ArchNode {
 export interface ArchEdge {
   from: string;
   to: string;
+  synthetic?: boolean;
 }
 
 export interface ArchGraph {
@@ -258,11 +259,56 @@ export function buildArchGraph(scan: RawScan, maxNodes = 30): ArchGraph {
     };
   });
 
+  // Fallback: if the scanner found no import edges between selected files,
+  // synthesize structural edges from the architectural layer flow so the
+  // graph always renders meaningful connections.
+  if (edges.length === 0 && nodes.length > 1) {
+    const layerFlow: [ArchLayer, ArchLayer][] = [
+      ["entry",       "routes"],
+      ["entry",       "controllers"],
+      ["entry",       "services"],
+      ["routes",      "controllers"],
+      ["controllers", "services"],
+      ["routes",      "services"],
+      ["services",    "database"],
+      ["controllers", "database"],
+      ["config",      "entry"],
+      ["config",      "services"],
+      ["utils",       "services"],
+      ["utils",       "controllers"],
+      ["utils",       "routes"],
+    ];
+
+    const byLayer: Record<ArchLayer, ArchNode[]> = {
+      entry: [], routes: [], controllers: [], services: [],
+      database: [], config: [], utils: [], other: [],
+    };
+    for (const n of nodes) byLayer[n.layer].push(n);
+
+    for (const [fromLayer, toLayer] of layerFlow) {
+      const fromNodes = byLayer[fromLayer];
+      const toNodes = byLayer[toLayer];
+      if (fromNodes.length === 0 || toNodes.length === 0) continue;
+      for (const fn of fromNodes.slice(0, 2)) {
+        for (const tn of toNodes.slice(0, 2)) {
+          edges.push({ from: fn.path, to: tn.path, synthetic: true });
+        }
+      }
+    }
+
+    // If still no edges (all nodes in "other" layer), chain them in score order
+    if (edges.length === 0) {
+      for (let i = 0; i < Math.min(nodes.length - 1, 8); i++) {
+        edges.push({ from: nodes[i].path, to: nodes[i + 1].path, synthetic: true });
+      }
+    }
+  }
+
   return {
     nodes,
     edges,
     layers,
-    summary: generateSummary(layers, nodes, edges.length),
+    summary: generateSummary(layers, nodes, edges.length, edges.some(e => e.synthetic)),
     stats: {
       totalFiles: files.length,
       shownFiles: nodes.length,
@@ -271,10 +317,14 @@ export function buildArchGraph(scan: RawScan, maxNodes = 30): ArchGraph {
   };
 }
 
-function generateSummary(layers: ArchLayer[], nodes: ArchNode[], edgeCount: number): string {
+function generateSummary(layers: ArchLayer[], nodes: ArchNode[], edgeCount: number, isSynthetic = false): string {
   const has = (l: ArchLayer) => layers.includes(l);
 
-  const edgeNote = edgeCount > 0 ? ` with ${edgeCount} import connections shown.` : ".";
+  const edgeNote = edgeCount === 0
+    ? "."
+    : isSynthetic
+    ? ` (${edgeCount} structural connections inferred from file roles).`
+    : ` with ${edgeCount} real import connections shown.`;
 
   if (has("entry") && has("routes") && has("controllers") && has("services") && has("database"))
     return `Full-stack layered architecture: entry points route to controllers, controllers delegate to services, and services manage the data layer${edgeNote}`;

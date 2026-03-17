@@ -202,23 +202,25 @@ export default function DependencyGraph({ scan, compact }: Props) {
         const srcLayer = srcNode?.layer ?? "other";
         const color = LAYER_CONFIG[srcLayer].borderColor;
         const isMainFlow = ["entry", "routes", "controllers", "services"].includes(srcLayer);
+        const isSynth = !!e.synthetic;
 
         return {
           id: `e${i}`,
           source: e.from,
           target: e.to,
           type: "smoothstep",
-          animated: isMainFlow,
+          animated: !isSynth && isMainFlow,
           style: {
-            stroke: color,
-            strokeWidth: isMainFlow ? 2.5 : 1.8,
-            opacity: isMainFlow ? 0.9 : 0.65,
+            stroke: isSynth ? "#94a3b8" : color,
+            strokeWidth: isSynth ? 1.5 : isMainFlow ? 2.5 : 1.8,
+            opacity: isSynth ? 0.45 : isMainFlow ? 0.9 : 0.72,
+            strokeDasharray: isSynth ? "5 4" : undefined,
           },
           markerEnd: {
             type: MarkerType.ArrowClosed,
-            color,
-            width: 14,
-            height: 14,
+            color: isSynth ? "#94a3b8" : color,
+            width: isSynth ? 10 : 14,
+            height: isSynth ? 10 : 14,
           },
         };
       });
@@ -230,22 +232,11 @@ export default function DependencyGraph({ scan, compact }: Props) {
   if (!archGraph || archGraph.nodes.length === 0)
     return emptyState("Graph is empty", "No architectural files were detected in this repository.");
 
-  const hasEdges = rfEdges.length > 0;
+  const hasSyntheticEdges = archGraph.edges.some(e => e.synthetic);
 
   return (
     <div style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-      {!compact && <SummaryCard archGraph={archGraph} edgeCount={rfEdges.length} />}
-
-      {!compact && !hasEdges && archGraph.nodes.length > 0 && (
-        <div className="mx-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 flex items-center gap-2.5">
-          <svg className="h-4 w-4 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-          </svg>
-          <p className="text-xs text-amber-700">
-            No direct import links found between the displayed files. The files are classified by their role — try a larger or more interconnected repository to see dependency edges.
-          </p>
-        </div>
-      )}
+      {!compact && <SummaryCard archGraph={archGraph} edgeCount={rfEdges.length} isSynthetic={hasSyntheticEdges} />}
 
       <div style={{ flex: 1 }}>
         <ReactFlow
@@ -283,9 +274,10 @@ export default function DependencyGraph({ scan, compact }: Props) {
   );
 }
 
-function SummaryCard({ archGraph, edgeCount }: {
+function SummaryCard({ archGraph, edgeCount, isSynthetic }: {
   archGraph: ReturnType<typeof buildArchGraph>;
   edgeCount: number;
+  isSynthetic: boolean;
 }) {
   return (
     <div className="flex items-start gap-4 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm mx-0">
@@ -297,11 +289,20 @@ function SummaryCard({ archGraph, edgeCount }: {
             {archGraph.stats.shownFiles} of {archGraph.stats.totalFiles} files shown
           </span>
           <span className="text-xs text-gray-300">·</span>
-          <span className={`text-xs font-medium ${edgeCount > 0 ? "text-violet-600" : "text-gray-400"}`}>
-            {edgeCount > 0 ? `${edgeCount} import connections` : "no cross-file connections in selection"}
-          </span>
+          {edgeCount > 0 ? (
+            <span className={`text-xs font-medium ${isSynthetic ? "text-amber-500" : "text-violet-600"}`}>
+              {edgeCount} {isSynthetic ? "inferred structural connections" : "real import connections"}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-400">no connections</span>
+          )}
         </div>
         <p className="text-xs text-gray-500 leading-relaxed">{archGraph.summary}</p>
+        {isSynthetic && (
+          <p className="text-xs text-amber-600 mt-1">
+            ⟶ Dashed lines show inferred architectural flow. Re-analyze a Python or TypeScript repo for exact import edges.
+          </p>
+        )}
       </div>
       <div className="flex flex-wrap gap-1.5 shrink-0 max-w-xs">
         {archGraph.layers.map(layer => {
