@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
 from pydantic import BaseModel
@@ -14,6 +14,9 @@ from app.services.repo_service import analyze_github_repo, analyze_uploaded_zip
 from ai_summary import generate_repo_summary
 from feature_assistant import suggest_feature_location
 from repo_scanner import scan_repo
+from app.auth import router as auth_router
+from app.db import add_search_history, get_user_history
+from app.dependencies import get_current_user, get_optional_user
 
 
 app = FastAPI(title="CodeAtlas Backend", version="0.1.0")
@@ -25,6 +28,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
 
 DEFAULT_MODEL = os.getenv("CODEATLAS_OPENAI_MODEL", "gpt-4.1-mini")
 
@@ -63,21 +68,15 @@ async def analyze_repo(
     repo_url: Optional[str] = Form(default=None),
     zip_file: Optional[UploadFile] = File(default=None),
 ) -> dict:
-    """
-    Accept a GitHub repo URL or uploaded ZIP archive, materialize it locally,
-    scan it, and return the file tree, scan data, and dependency graph.
-    """
     if not repo_url and not zip_file:
         raise HTTPException(status_code=400, detail="Either 'repo_url' or 'zip_file' is required.")
     if repo_url and zip_file:
         raise HTTPException(status_code=400, detail="Provide only one of 'repo_url' or 'zip_file', not both.")
-
     if repo_url:
         try:
             return analyze_github_repo(repo_url)
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Failed to clone repository: {exc}") from exc
-
     assert zip_file is not None
     try:
         return await analyze_uploaded_zip(zip_file)
@@ -92,7 +91,6 @@ class SummaryRequest(BaseModel):
 
 @app.post("/api/repos/summary")
 async def repo_summary(req: SummaryRequest) -> dict:
-    """Generate an AI-powered architectural summary for an already-analyzed workspace."""
     _require_openai_key()
     workspace = _get_workspace(req.workspace_path)
     try:
@@ -111,7 +109,6 @@ class FeatureRequest(BaseModel):
 
 @app.post("/api/repos/feature")
 async def feature_location(req: FeatureRequest) -> dict:
-    """Suggest where in the codebase to implement a described feature."""
     _require_openai_key()
     if not req.feature_request.strip():
         raise HTTPException(status_code=400, detail="feature_request must not be empty.")
@@ -136,7 +133,6 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/repos/chat")
 async def chat(req: ChatRequest) -> dict:
-    """Answer a natural-language question about the analyzed repository."""
     key = _require_openai_key()
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="question must not be empty.")
@@ -172,3 +168,28 @@ async def chat(req: ChatRequest) -> dict:
         return {"answer": answer, "model": model}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Chat failed: {exc}") from exc
+
+
+class HistoryRequest(BaseModel):
+    repo_url: str
+    workspace_path: Optional[str] = None
+    stats: Optional[dict] = None
+
+
+@app.post("/api/history")
+async def save_history(req: HistoryRequest, request: Request) -> dict:
+    user = get_current_user(request)
+    entry = add_search_history(
+        user_id=int(user["sub"]),
+        repo_url=req.repo_url,
+        workspace_path=req.workspace_path,
+        stats=req.stats,
+    )
+    return entry
+
+
+@app.get("/api/history")
+async def fetch_history(request: Request) -> list:
+    user = get_current_user(request)
+    history = get_user_history(user_id=int(user["sub"]))
+    return history

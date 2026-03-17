@@ -1,44 +1,78 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import RepoSummary from "./components/RepoSummary";
 import DependencyGraph from "./components/DependencyGraph";
 import ChatBox from "./components/ChatBox";
 import FeatureAssistantPanel from "./components/FeatureAssistantPanel";
+import AuthModal from "./components/AuthModal";
+import { useAuth } from "./AuthContext";
 import {
   analyzeRepoByUrl,
   generateSummary,
+  saveHistory,
+  fetchHistory,
   type AnalyzeRepoResponse,
   type RepoSummary as RepoSummaryType,
+  type HistoryEntry,
 } from "./api/client";
 
-type Tab = "home" | "graph" | "feature" | "chat";
+type Tab = "home" | "graph" | "feature" | "chat" | "history";
 
 export default function App() {
+  const { user, loading, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>("home");
   const [repoUrl, setRepoUrl] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalyzeRepoResponse | null>(null);
   const [summary, setSummary] = useState<RepoSummaryType | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   const workspacePath = analysis?.workspace_path ?? null;
   const hasAnalysis = Boolean(workspacePath);
 
-  async function onAnalyze() {
+  useEffect(() => {
+    if (user) loadHistory();
+  }, [user]);
+
+  async function loadHistory() {
+    setHistoryLoading(true);
+    try {
+      const h = await fetchHistory();
+      setHistory(h);
+    } catch {
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  async function onAnalyze(urlOverride?: string) {
+    const url = (urlOverride ?? repoUrl).trim();
+    if (!url) return;
+    if (urlOverride) setRepoUrl(urlOverride);
     setError(null);
     setSummaryError(null);
-    setLoading(true);
+    setIsLoadingAnalysis(true);
     setAnalysis(null);
     setSummary(null);
+    setActiveTab("home");
     try {
-      const out = await analyzeRepoByUrl(repoUrl.trim());
+      const out = await analyzeRepoByUrl(url);
       setAnalysis(out);
       if (out.workspace_path) {
         setSummaryLoading(true);
         try {
           const s = await generateSummary(out.workspace_path);
           setSummary(s);
+          if (user) {
+            try {
+              await saveHistory(url, out.workspace_path, out.scan?.stats ?? null);
+              loadHistory();
+            } catch {}
+          }
         } catch (e: any) {
           setSummaryError(e?.message || String(e));
         } finally {
@@ -48,14 +82,31 @@ export default function App() {
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
-      setLoading(false);
+      setIsLoadingAnalysis(false);
     }
   }
 
-  const isAnalyzing = loading || summaryLoading;
+  const isAnalyzing = isLoadingAnalysis || summaryLoading;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen hero-gradient flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-violet-600 animate-pulse flex items-center justify-center">
+            <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+            </svg>
+          </div>
+          <p className="text-sm text-gray-400 font-medium">Loading CodeAtlas…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) return <AuthModal />;
 
   return (
-    <div className="min-h-screen hero-gradient flex flex-col">
+    <div className="min-h-screen hero-gradient flex flex-col" onClick={() => setUserMenuOpen(false)}>
       {/* Top Nav */}
       <nav className="w-full px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
         <div className="flex items-center gap-2">
@@ -87,26 +138,72 @@ export default function App() {
           >
             CodeAtlas AI
           </button>
+          <button
+            onClick={() => { setActiveTab("history"); loadHistory(); }}
+            className={`hover:text-gray-800 transition-colors ${activeTab === "history" ? "text-gray-800" : ""}`}
+          >
+            History
+          </button>
         </div>
 
-        {hasAnalysis && (
-          <div className="flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1">
-            <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse-dot" />
-            <span className="text-xs text-green-700 font-medium">Analyzed</span>
+        <div className="flex items-center gap-3">
+          {hasAnalysis && (
+            <div className="flex items-center gap-1.5 rounded-full bg-green-50 border border-green-200 px-3 py-1">
+              <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse-dot" />
+              <span className="text-xs text-green-700 font-medium">Analyzed</span>
+            </div>
+          )}
+
+          {/* User avatar + dropdown */}
+          <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setUserMenuOpen((o) => !o)}
+              className="flex items-center gap-2 rounded-full bg-white border border-gray-200 pl-1 pr-3 py-1 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <UserAvatar user={user} size={28} />
+              <span className="text-xs font-semibold text-gray-700 max-w-[90px] truncate">{user.name || user.email.split("@")[0]}</span>
+              <svg className="h-3.5 w-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {userMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden z-50">
+                <div className="px-4 py-3 border-b border-gray-100">
+                  <p className="text-xs font-semibold text-gray-800 truncate">{user.name || "User"}</p>
+                  <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                </div>
+                <button
+                  onClick={() => { setActiveTab("history"); loadHistory(); setUserMenuOpen(false); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                >
+                  <svg className="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Search History
+                </button>
+                <button
+                  onClick={() => { logout(); setUserMenuOpen(false); }}
+                  className="w-full text-left px-4 py-2.5 text-sm text-rose-500 hover:bg-rose-50 transition-colors flex items-center gap-2"
+                >
+                  <svg className="h-4 w-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                  </svg>
+                  Sign Out
+                </button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </nav>
 
       {/* HOME TAB */}
       {activeTab === "home" && (
         <main className="flex-1 flex flex-col">
-          {/* Hero */}
           <section className="text-center px-6 pt-8 pb-10 max-w-3xl mx-auto w-full">
             <div className="inline-flex items-center gap-2 rounded-full bg-white/80 border border-blue-200 px-4 py-1.5 text-xs font-semibold text-blue-600 mb-6 shadow-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse-dot" />
               BETA ACCESS NOW LIVE
             </div>
-
             <h1 className="text-6xl font-extrabold tracking-tight mb-4">
               <span className="purple-gradient-text">CodeAtlas</span>
             </h1>
@@ -115,7 +212,6 @@ export default function App() {
               understands dependencies, and explains logic in seconds.
             </p>
 
-            {/* URL Input */}
             <div className="relative max-w-xl mx-auto input-glow rounded-2xl bg-white border border-gray-200 shadow-sm overflow-hidden flex items-center">
               <div className="pl-4 pr-2 text-gray-400">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -132,11 +228,11 @@ export default function App() {
                 className="flex-1 py-3.5 px-2 text-sm text-gray-800 placeholder:text-gray-400 bg-transparent focus:outline-none"
               />
               <button
-                onClick={onAnalyze}
+                onClick={() => onAnalyze()}
                 disabled={isAnalyzing || repoUrl.trim().length === 0}
                 className="m-1.5 shrink-0 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2.5 transition-colors"
               >
-                {loading ? "Cloning…" : summaryLoading ? "Summarizing…" : "Start Analysis"}
+                {isLoadingAnalysis ? "Cloning…" : summaryLoading ? "Summarizing…" : "Start Analysis"}
               </button>
             </div>
 
@@ -147,40 +243,24 @@ export default function App() {
             )}
           </section>
 
-          {/* Stats row */}
           {analysis?.scan?.stats && (
             <section className="max-w-6xl mx-auto w-full px-6 mb-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <StatCard
-                  icon={
-                    <svg className="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                    </svg>
-                  }
-                  iconBg="bg-blue-50"
-                  label="Total Files"
+                  icon={<svg className="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>}
+                  iconBg="bg-blue-50" label="Total Files"
                   value={analysis.scan.stats.file_count?.toLocaleString?.() ?? analysis.scan.stats.file_count}
                   sub={<span className="text-green-500 text-xs font-medium">↑ scanned today</span>}
                 />
                 <StatCard
-                  icon={
-                    <svg className="h-5 w-5 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                    </svg>
-                  }
-                  iconBg="bg-teal-50"
-                  label="Primary Stack"
+                  icon={<svg className="h-5 w-5 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" /></svg>}
+                  iconBg="bg-teal-50" label="Primary Stack"
                   value={summary?.tech_stack?.[0] ?? "Detected"}
                   sub={<span className="text-gray-400 text-xs">{analysis.scan.stats.python_file_count} Python files</span>}
                 />
                 <StatCard
-                  icon={
-                    <svg className="h-5 w-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
-                    </svg>
-                  }
-                  iconBg="bg-violet-50"
-                  label="Dependencies"
+                  icon={<svg className="h-5 w-5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" /></svg>}
+                  iconBg="bg-violet-50" label="Dependencies"
                   value={`${analysis.scan.stats.dependency_edge_count} Edges`}
                   sub={<span className="text-gray-400 text-xs">Dependency connections</span>}
                 />
@@ -188,22 +268,12 @@ export default function App() {
             </section>
           )}
 
-          {/* Main content: Repo Summary + Chat */}
           {(hasAnalysis || summaryLoading) && (
             <section className="max-w-6xl mx-auto w-full px-6 mb-6">
               <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-                {/* Repo Summary */}
                 <div className="lg:col-span-3">
-                  <RepoSummary
-                    summary={summary}
-                    summaryLoading={summaryLoading}
-                    summaryError={summaryError}
-                    repoUrl={repoUrl}
-                    workspacePath={workspacePath}
-                  />
+                  <RepoSummary summary={summary} summaryLoading={summaryLoading} summaryError={summaryError} repoUrl={repoUrl} workspacePath={workspacePath} />
                 </div>
-
-                {/* Chat */}
                 <div className="lg:col-span-2">
                   <ChatBox workspacePath={workspacePath} />
                 </div>
@@ -211,7 +281,6 @@ export default function App() {
             </section>
           )}
 
-          {/* Dependency Visualizer (teaser on home) */}
           {hasAnalysis && (
             <section className="max-w-6xl mx-auto w-full px-6 mb-10">
               <div className="bg-white card-shadow rounded-2xl border border-gray-100 overflow-hidden">
@@ -220,10 +289,7 @@ export default function App() {
                     <h2 className="text-base font-bold text-gray-900">Live Dependency Visualizer</h2>
                     <p className="text-xs text-gray-400 mt-0.5">Interactive graph of module relationships</p>
                   </div>
-                  <button
-                    onClick={() => setActiveTab("graph")}
-                    className="flex items-center gap-1.5 rounded-full bg-violet-50 border border-violet-200 text-violet-600 text-xs font-semibold px-3 py-1.5 hover:bg-violet-100 transition-colors"
-                  >
+                  <button onClick={() => setActiveTab("graph")} className="flex items-center gap-1.5 rounded-full bg-violet-50 border border-violet-200 text-violet-600 text-xs font-semibold px-3 py-1.5 hover:bg-violet-100 transition-colors">
                     Open Full Graph →
                   </button>
                 </div>
@@ -234,7 +300,6 @@ export default function App() {
             </section>
           )}
 
-          {/* Empty state CTA */}
           {!hasAnalysis && !isAnalyzing && (
             <section className="max-w-6xl mx-auto w-full px-6 mb-10">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -259,9 +324,7 @@ export default function App() {
       {activeTab === "graph" && (
         <main className="flex flex-1 flex-col px-6 py-4 max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setActiveTab("home")} className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">
-              ← Back to Home
-            </button>
+            <button onClick={() => setActiveTab("home")} className="text-xs text-gray-400 hover:text-gray-600 transition-colors flex items-center gap-1">← Back to Home</button>
             <h2 className="text-sm font-bold text-gray-800">Dependency Graph</h2>
           </div>
           {!hasAnalysis ? (
@@ -278,9 +341,7 @@ export default function App() {
       {activeTab === "feature" && (
         <main className="flex flex-1 flex-col px-6 py-4 max-w-4xl mx-auto w-full">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setActiveTab("home")} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
-              ← Back to Home
-            </button>
+            <button onClick={() => setActiveTab("home")} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">← Back to Home</button>
             <h2 className="text-sm font-bold text-gray-800">Feature Assistant</h2>
           </div>
           {!hasAnalysis ? (
@@ -298,9 +359,7 @@ export default function App() {
       {activeTab === "chat" && (
         <main className="flex flex-1 flex-col px-6 py-4 max-w-4xl mx-auto w-full">
           <div className="flex items-center gap-3 mb-4">
-            <button onClick={() => setActiveTab("home")} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
-              ← Back to Home
-            </button>
+            <button onClick={() => setActiveTab("home")} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">← Back to Home</button>
             <h2 className="text-sm font-bold text-gray-800">CodeAtlas AI</h2>
           </div>
           {!hasAnalysis ? (
@@ -308,6 +367,66 @@ export default function App() {
           ) : (
             <div className="flex flex-1 flex-col" style={{ minHeight: "calc(100vh - 200px)" }}>
               <ChatBox workspacePath={workspacePath} fullPage />
+            </div>
+          )}
+        </main>
+      )}
+
+      {/* HISTORY TAB */}
+      {activeTab === "history" && (
+        <main className="flex flex-1 flex-col px-6 py-4 max-w-4xl mx-auto w-full">
+          <div className="flex items-center gap-3 mb-6">
+            <button onClick={() => setActiveTab("home")} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">← Back to Home</button>
+            <h2 className="text-sm font-bold text-gray-800">Search History</h2>
+          </div>
+
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <div className="h-8 w-8 rounded-full border-2 border-violet-200 border-t-violet-600 animate-spin" />
+            </div>
+          ) : history.length === 0 ? (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center py-20">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 border border-gray-200">
+                <svg className="h-7 w-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div>
+                <div className="text-base font-semibold text-gray-700">No searches yet</div>
+                <div className="mt-1 max-w-sm text-sm text-gray-400">Analyze a repository and it'll appear here.</div>
+              </div>
+              <button onClick={() => setActiveTab("home")} className="rounded-full bg-violet-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-violet-500 transition-colors shadow-sm">
+                Analyze a Repo
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {history.map((entry) => (
+                <div key={entry.id} className="bg-white card-shadow rounded-2xl border border-gray-100 px-5 py-4 flex items-center justify-between gap-4 group">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-9 w-9 shrink-0 rounded-xl bg-violet-50 border border-violet-100 flex items-center justify-center">
+                      <svg className="h-4 w-4 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                      </svg>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">{entry.repo_url.replace("https://github.com/", "")}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{new Date(entry.analyzed_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {entry.stats?.file_count && (
+                      <span className="text-xs text-gray-500 bg-gray-100 rounded-full px-2.5 py-1">{entry.stats.file_count} files</span>
+                    )}
+                    <button
+                      onClick={() => onAnalyze(entry.repo_url)}
+                      className="rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold px-3 py-1.5 transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      Re-analyze
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </main>
@@ -337,6 +456,18 @@ export default function App() {
   );
 }
 
+function UserAvatar({ user, size = 32 }: { user: { name: string; email: string; picture?: string }; size?: number }) {
+  const initials = (user.name || user.email).slice(0, 2).toUpperCase();
+  if (user.picture) {
+    return <img src={user.picture} alt={user.name} style={{ width: size, height: size, borderRadius: "50%", objectFit: "cover" }} />;
+  }
+  return (
+    <div style={{ width: size, height: size, borderRadius: "50%", background: "linear-gradient(135deg, #7c3aed, #4f46e5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ fontSize: size * 0.38, fontWeight: 700, color: "white" }}>{initials}</span>
+    </div>
+  );
+}
+
 function StatCard({ icon, iconBg, label, value, sub }: { icon: ReactNode; iconBg: string; label: string; value: ReactNode; sub: ReactNode }) {
   return (
     <div className="bg-white card-shadow rounded-2xl border border-gray-100 p-5 flex items-center justify-between">
@@ -345,9 +476,7 @@ function StatCard({ icon, iconBg, label, value, sub }: { icon: ReactNode; iconBg
         <p className="text-2xl font-bold text-gray-900">{value}</p>
         <div className="mt-1">{sub}</div>
       </div>
-      <div className={`h-12 w-12 ${iconBg} rounded-xl flex items-center justify-center`}>
-        {icon}
-      </div>
+      <div className={`h-12 w-12 ${iconBg} rounded-xl flex items-center justify-center`}>{icon}</div>
     </div>
   );
 }
