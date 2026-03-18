@@ -5,6 +5,14 @@ import os
 from pathlib import Path
 from typing import Optional
 
+# Load .env when running locally (no-op if python-dotenv is not installed
+# or the file doesn't exist, so production / Replit is unaffected).
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from openai import OpenAI
