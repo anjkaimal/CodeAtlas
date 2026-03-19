@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../AuthContext";
 import { loginWithEmail, registerWithEmail } from "../api/client";
 
@@ -16,10 +16,27 @@ export default function AuthModal() {
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  // Pick up ?auth_error= set by the Google OAuth callback when something goes wrong.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthErr = params.get("auth_error");
+    if (oauthErr) {
+      setError(`Google sign-in failed: ${decodeURIComponent(oauthErr)}`);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   function switchMode(next: Mode) {
     setMode(next);
     setError(null);
+  }
+
+  function handleGoogleSignIn() {
+    setGoogleLoading(true);
+    // Redirect to backend — it will forward to Google and back.
+    window.location.href = "/auth/google";
   }
 
   async function handleLoginSubmit(e: React.FormEvent) {
@@ -81,6 +98,35 @@ export default function AuthModal() {
         </div>
 
         <div className="bg-white rounded-2xl card-shadow border border-gray-100 p-8">
+          {/* Error banner */}
+          {error && (
+            <div className="mb-4 rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-sm text-rose-600 leading-snug">
+              {error}
+            </div>
+          )}
+
+          {/* Google sign-in */}
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={googleLoading || loading}
+            className="w-full flex items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition-colors"
+          >
+            {googleLoading ? (
+              <div className="h-4 w-4 rounded-full border-2 border-gray-300 border-t-gray-600 animate-spin" />
+            ) : (
+              <GoogleIcon />
+            )}
+            {googleLoading ? "Redirecting…" : "Continue with Google"}
+          </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400 font-medium">or</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
           {/* Tabs */}
           <div className="flex rounded-xl bg-gray-100 p-1 mb-6">
             <button
@@ -102,13 +148,6 @@ export default function AuthModal() {
               Create Account
             </button>
           </div>
-
-          {/* Error banner */}
-          {error && (
-            <div className="mb-4 rounded-xl bg-rose-50 border border-rose-200 px-3.5 py-2.5 text-sm text-rose-600 leading-snug">
-              {error}
-            </div>
-          )}
 
           {/* ── SIGN IN FORM ── */}
           {mode === "login" && (
@@ -226,5 +265,28 @@ export default function AuthModal() {
         </p>
       </div>
     </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+      <path
+        d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"
+        fill="#4285F4"
+      />
+      <path
+        d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"
+        fill="#34A853"
+      />
+      <path
+        d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z"
+        fill="#FBBC05"
+      />
+      <path
+        d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z"
+        fill="#EA4335"
+      />
+    </svg>
   );
 }

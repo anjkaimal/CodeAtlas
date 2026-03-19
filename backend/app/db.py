@@ -147,24 +147,27 @@ def create_email_user(email: str, name: str, password_hash: str) -> dict:
 
 
 def get_or_create_oauth_user(
-    replit_id: str,
+    oauth_id: str,
     email: str,
     name: Optional[str],
     picture: Optional[str],
+    provider: str = "google",
 ) -> dict:
+    """Upsert an OAuth user keyed on the provider's user ID (stored in replit_id column)."""
     with get_db() as conn:
         rows = _exec(
             conn,
             """
             INSERT INTO users (replit_id, email, name, picture, auth_provider)
-            VALUES (%s, %s, %s, %s, 'oauth')
+            VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (replit_id) DO UPDATE SET
-                email   = EXCLUDED.email,
-                name    = EXCLUDED.name,
-                picture = EXCLUDED.picture
+                email        = EXCLUDED.email,
+                name         = EXCLUDED.name,
+                picture      = EXCLUDED.picture,
+                auth_provider = EXCLUDED.auth_provider
             RETURNING *
             """,
-            (replit_id, email, name, picture),
+            (oauth_id, email, name, picture, provider),
         )
         return rows[0]
 

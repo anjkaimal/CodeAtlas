@@ -8,7 +8,6 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import hashlib
 import hmac as _hmac
 
 import requests as http_requests
@@ -28,17 +27,24 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 _PBKDF2_ITERS = 600_000
 
-REPL_ID = os.environ.get("REPL_ID", "")
-ISSUER_URL = os.environ.get("ISSUER_URL", "https://replit.com/oidc")
 JWT_SECRET = os.environ.get("SESSION_SECRET", "dev-fallback-secret")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24 * 7
+
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", "")
+
+_GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+_GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+_GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 DEV_DOMAIN = os.environ.get("REPLIT_DEV_DOMAIN", "")
 FRONTEND_URL = f"https://{DEV_DOMAIN}" if DEV_DOMAIN else "http://localhost:5000"
 
 _pkce_store: dict[str, str] = {}
 
+
+# ── Password helpers ──────────────────────────────────────────────────────
 
 def hash_password(plain: str) -> str:
     salt = os.urandom(32)
@@ -57,6 +63,8 @@ def verify_password(plain: str, stored: str) -> bool:
         return False
 
 
+# ── JWT helpers ───────────────────────────────────────────────────────────
+
 def create_jwt(user_id: int, email: str, name: Optional[str], picture: Optional[str]) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_HOURS)
     return jwt.encode(
@@ -71,6 +79,23 @@ def create_jwt(user_id: int, email: str, name: Optional[str], picture: Optional[
         algorithm=ALGORITHM,
     )
 
+
+# ── PKCE helpers ──────────────────────────────────────────────────────────
+
+def _generate_pkce() -> tuple[str, str]:
+    verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(verifier.encode()).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return verifier, challenge
+
+
+def _google_callback_url(request: Request) -> str:
+    """Absolute URL that Google must redirect back to after login."""
+    base = str(request.base_url).rstrip("/")
+    return base.replace("http://", "https://") + "/auth/google/callback"
+
+
+# ── Email / password routes ───────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
     email: str
@@ -100,81 +125,111 @@ async def register(req: RegisterRequest):
 async def login_email(req: LoginRequest):
     user = get_user_by_email(req.email.lower())
     if not user:
-        raise HTTPException(status_code=401, detail="No account found with that email address. Please sign up first.")
+        raise HTTPException(
+            status_code=401,
+            detail="No account found with that email address. Please sign up first.",
+        )
     if not user.get("password_hash"):
-        raise HTTPException(status_code=401, detail="This account uses Google sign-in. Please use the 'Continue with Google' button.")
+        raise HTTPException(
+            status_code=401,
+            detail="This account uses Google sign-in. Please use the 'Continue with Google' button.",
+        )
     if not verify_password(req.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Incorrect password, please try again.")
     token = create_jwt(user["id"], user["email"], user["name"], user.get("picture"))
     return {"token": token, "user": _safe_user(user)}
 
 
-def _generate_pkce() -> tuple[str, str]:
-    verifier = secrets.token_urlsafe(64)
-    digest = hashlib.sha256(verifier.encode()).digest()
-    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-    return verifier, challenge
+# ── Google OAuth routes ───────────────────────────────────────────────────
 
-
-def _callback_url(request: Request) -> str:
-    base = str(request.base_url).rstrip("/")
-    return base.replace("http://", "https://") + "/auth/callback"
-
-
-@router.get("/oauth")
-async def oauth_login(request: Request):
-    if not REPL_ID:
-        raise HTTPException(status_code=500, detail="OAuth not configured (REPL_ID missing).")
+@router.get("/google")
+async def google_login(request: Request):
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="Google OAuth is not configured on this server.",
+        )
     state = secrets.token_urlsafe(32)
     verifier, challenge = _generate_pkce()
     _pkce_store[state] = verifier
+
     params = {
-        "client_id": REPL_ID,
+        "client_id": GOOGLE_CLIENT_ID,
         "response_type": "code",
-        "redirect_uri": _callback_url(request),
-        "scope": "openid profile email",
+        "redirect_uri": _google_callback_url(request),
+        "scope": "openid email profile",
         "state": state,
         "code_challenge": challenge,
         "code_challenge_method": "S256",
-        "prompt": "login consent",
+        "access_type": "online",
+        "prompt": "select_account",
     }
-    return RedirectResponse(f"{ISSUER_URL}/auth?" + urllib.parse.urlencode(params))
+    return RedirectResponse(_GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params))
 
 
-@router.get("/callback")
-async def oauth_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+@router.get("/google/callback")
+async def google_callback(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+):
     if error:
-        return RedirectResponse(f"{FRONTEND_URL}?auth_error={urllib.parse.quote(error)}")
+        return RedirectResponse(
+            f"{FRONTEND_URL}?auth_error={urllib.parse.quote(error)}"
+        )
+
     verifier = _pkce_store.pop(state, None)
     if not verifier:
-        raise HTTPException(status_code=400, detail="Invalid or expired state.")
-    resp = http_requests.post(
-        f"{ISSUER_URL}/token",
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state.")
+
+    # Exchange the authorisation code for tokens
+    token_resp = http_requests.post(
+        _GOOGLE_TOKEN_URL,
         data={
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": _callback_url(request),
-            "client_id": REPL_ID,
+            "redirect_uri": _google_callback_url(request),
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
             "code_verifier": verifier,
         },
     )
-    if not resp.ok:
-        raise HTTPException(status_code=400, detail=f"Token exchange failed: {resp.text}")
-    token_data = resp.json()
-    id_token = token_data.get("id_token")
-    if not id_token:
-        raise HTTPException(status_code=400, detail="No id_token returned.")
-    claims = jwt.decode(id_token, options={"verify_signature": False})
-    replit_id = str(claims["sub"])
-    email = claims.get("email") or f"{replit_id}@oauth.codeatlas"
-    first = claims.get("first_name") or ""
-    last = claims.get("last_name") or ""
-    name = (first + " " + last).strip() or email
-    picture = claims.get("profile_image_url")
-    user = get_or_create_oauth_user(replit_id=replit_id, email=email, name=name, picture=picture)
+    if not token_resp.ok:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Google token exchange failed: {token_resp.text}",
+        )
+    access_token = token_resp.json().get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=400, detail="No access_token returned by Google.")
+
+    # Fetch the user's profile from Google
+    info_resp = http_requests.get(
+        _GOOGLE_USERINFO_URL,
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    if not info_resp.ok:
+        raise HTTPException(status_code=400, detail="Failed to fetch profile from Google.")
+
+    google_data = info_resp.json()
+    google_id = str(google_data["id"])
+    email = google_data.get("email") or f"{google_id}@google.oauth"
+    name = google_data.get("name") or email
+    picture = google_data.get("picture")
+
+    user = get_or_create_oauth_user(
+        oauth_id=google_id,
+        email=email,
+        name=name,
+        picture=picture,
+        provider="google",
+    )
     session_token = create_jwt(user["id"], user["email"], user["name"], user.get("picture"))
     return RedirectResponse(f"{FRONTEND_URL}?token={urllib.parse.quote(session_token)}")
 
+
+# ── Session routes ────────────────────────────────────────────────────────
 
 @router.get("/me")
 async def me(request: Request):
