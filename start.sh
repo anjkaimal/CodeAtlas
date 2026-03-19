@@ -2,10 +2,6 @@
 # ── CodeAtlas startup script ─────────────────────────────────────────────
 # Works on Replit and locally.
 # Usage: bash start.sh
-#
-# Prerequisites (local only — Replit handles this automatically):
-#   pip install -r backend/requirements.txt
-#   cd frontend && npm install && cd ..
 
 set -e
 
@@ -22,10 +18,19 @@ if [ -f "$REPO_ROOT/.env" ]; then
 fi
 
 # Replit stores Python packages under .pythonlibs.
-# On a regular machine this path won't exist and the export is harmless.
 export PATH="$HOME/workspace/.pythonlibs/bin:$PATH"
 
 # ── Start backend ─────────────────────────────────────────────────────────
+# Export key vars explicitly so child subshells always inherit the live values.
+# On Replit, secrets added after first boot may arrive as empty strings in new
+# child processes; exporting here captures the correct values from the shell.
+export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+export SESSION_SECRET="${SESSION_SECRET:-}"
+export DATABASE_URL="${DATABASE_URL:-}"
+export GOOGLE_OAUTH_CLIENT_ID="${GOOGLE_OAUTH_CLIENT_ID:-}"
+export GOOGLE_OAUTH_CLIENT_SECRET="${GOOGLE_OAUTH_CLIENT_SECRET:-}"
+export REPLIT_DEV_DOMAIN="${REPLIT_DEV_DOMAIN:-}"
+
 echo "Starting backend on http://localhost:8000 ..."
 (
   cd "$REPO_ROOT/backend"

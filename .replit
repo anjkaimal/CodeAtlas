@@ -49,3 +49,4 @@ run = ["bash", "start.sh"]
 [userenv]
 
 [userenv.shared]
+OPENAI_API_KEY = "YOUR KEY HERE"

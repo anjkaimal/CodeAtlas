@@ -235,37 +235,46 @@ export default function DependencyGraph({ scan, compact }: Props) {
   const hasSyntheticEdges = archGraph.edges.some(e => e.synthetic);
 
   return (
-    <div style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-      {!compact && <SummaryCard archGraph={archGraph} edgeCount={rfEdges.length} isSynthetic={hasSyntheticEdges} />}
+    <div style={{ height: "100%", width: "100%", display: "flex", flexDirection: "column", background: "white" }}>
+      {!compact && (
+        <div style={{ flexShrink: 0, padding: "12px 16px 0" }}>
+          <SummaryCard archGraph={archGraph} edgeCount={rfEdges.length} isSynthetic={hasSyntheticEdges} />
+        </div>
+      )}
 
-      <div style={{ flex: 1 }}>
+      {/* ReactFlow MUST live inside a position:relative parent with concrete dimensions */}
+      <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "white" }}>
         <ReactFlow
           nodes={rfNodes}
           edges={rfEdges}
           nodeTypes={nodeTypes}
           fitView
-          fitViewOptions={{ padding: 0.1 }}
-          minZoom={0.15}
+          fitViewOptions={{ padding: compact ? 0.08 : 0.12 }}
+          minZoom={0.1}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
+          style={{ background: "white", position: "absolute", inset: 0, width: "100%", height: "100%" }}
         >
-          <Background color="#e2e8f0" gap={24} size={1} />
+          <Background color="#e8eef4" gap={28} size={1} />
           <Controls
             style={{
               background: "white", border: "1px solid #e2e8f0",
-              borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+              borderRadius: 8, boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
             }}
             showInteractive={false}
           />
           {!compact && (
             <MiniMap
-              style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 8 }}
+              style={{
+                background: "white", border: "1px solid #e2e8f0",
+                borderRadius: 8, boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+              }}
               nodeColor={(n) => {
                 if (n.type === "laneHeader") return "transparent";
                 const node = n.data?.node as ArchNode | undefined;
                 return node ? LAYER_CONFIG[node.layer].borderColor : "#94a3b8";
               }}
-              maskColor="rgba(241,245,249,0.7)"
+              maskColor="rgba(241,245,249,0.65)"
             />
           )}
         </ReactFlow>

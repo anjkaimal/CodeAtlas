@@ -5,13 +5,15 @@ import os
 from pathlib import Path
 from typing import Optional
 
-# Load .env when running locally (no-op if python-dotenv is not installed
-# or the file doesn't exist, so production / Replit is unaffected).
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+# Load .env only when running locally (not on Replit, where secrets are injected).
+# dotenv's override=False is the default, but a blank value in .env still wins
+# over an already-set env var in some dotenv versions, so we guard with REPL_ID.
+if not os.environ.get("REPL_ID"):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(override=False)
+    except ImportError:
+        pass
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -50,7 +52,7 @@ def _compact_json(value: object, *, max_chars: int) -> str:
 
 
 def _require_openai_key() -> str:
-    key = os.getenv("OPENAI_API_KEY")
+    key = _resolve_openai_key()
     if not key:
         raise HTTPException(
             status_code=503,
@@ -66,9 +68,38 @@ def _get_workspace(path: str) -> Path:
     return workspace
 
 
+def _resolve_openai_key() -> str:
+    """Return the OpenAI key, scanning all /proc/*/environ as a Replit fallback.
+
+    On Replit, secrets added after first launch may be injected as empty strings
+    into the workflow process but are present with correct values in the
+    interactive shell session.  Scanning all process environments finds the
+    value wherever it lives.
+    """
+    key = os.environ.get("OPENAI_API_KEY", "")
+    if key:
+        return key
+
+    import glob
+    needle = b"OPENAI_API_KEY="
+    for env_path in glob.glob("/proc/[0-9]*/environ"):
+        try:
+            with open(env_path, "rb") as f:
+                raw = f.read()
+            for part in raw.split(b"\x00"):
+                if part.startswith(needle):
+                    candidate = part[len(needle):].decode(errors="replace")
+                    if candidate:
+                        os.environ["OPENAI_API_KEY"] = candidate
+                        return candidate
+        except Exception:
+            continue
+    return key
+
+
 @app.get("/health")
 async def health_check() -> dict:
-    return {"status": "ok", "openai_configured": bool(os.getenv("OPENAI_API_KEY"))}
+    return {"status": "ok", "openai_configured": bool(_resolve_openai_key())}
 
 
 @app.post("/api/repos/analyze")
@@ -152,15 +183,31 @@ async def chat(req: ChatRequest) -> dict:
         client = OpenAI(api_key=key)
         resp = client.chat.completions.create(
             model=model,
-            temperature=0.2,
+            temperature=0.4,
             messages=[
                 {
                     "role": "system",
                     "content": (
-                        "You are a helpful code assistant. You have been given a JSON representation "
-                        "of a repository's structure including files, imports, classes, and functions. "
-                        "Answer the developer's question concisely and accurately. "
-                        "Reference specific file paths when relevant."
+                        "You are CodeAtlas Bot, an expert software architect and code analysis assistant. "
+                        "You have been provided a complete JSON snapshot of a repository's structure — "
+                        "every file path, import, class definition, function signature, and module "
+                        "relationship is available to you as factual data.\n\n"
+                        "Your job is to give thorough, accurate, and authoritative answers. "
+                        "Treat the repository data as ground truth and reason from it directly.\n\n"
+                        "Response standards:\n"
+                        "- Be complete. Cover every relevant aspect of the question — do not truncate.\n"
+                        "- Always cite specific file paths, function names, and class names from the data.\n"
+                        "- Trace call chains and data flows through the actual files when relevant.\n"
+                        "- When asked where to make changes, give the exact file path and the insertion point "
+                        "(function name, line context, or class).\n"
+                        "- Explain architectural decisions and patterns you observe in the structure.\n"
+                        "- Use markdown: headers (##) for multi-part answers, inline code for names and paths, "
+                        "fenced code blocks for examples.\n"
+                        "- Speak with confidence. Do not use phrases like 'I think', 'it seems', 'might be', "
+                        "or 'I'm not sure' — you have the full repository structure and can reason from it "
+                        "definitively. Only hedge when information is genuinely absent from the data.\n"
+                        "- When asked about something not visible in the structure, say so clearly and "
+                        "provide the best guidance based on what is available."
                     ),
                 },
                 {
