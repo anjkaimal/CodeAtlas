@@ -200,9 +200,9 @@ export default function App() {
       {activeTab === "home" && (
         <main className="flex-1 flex flex-col">
           <section className="text-center px-6 pt-8 pb-10 max-w-3xl mx-auto w-full">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/80 border border-blue-200 px-4 py-1.5 text-xs font-semibold text-blue-600 mb-6 shadow-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse-dot" />
-              BETA ACCESS NOW LIVE
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/80 border border-violet-200 px-4 py-1.5 text-xs font-semibold text-violet-600 mb-6 shadow-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-pulse-dot" />
+              AI-POWERED CODE INTELLIGENCE
             </div>
             <h1 className="text-6xl font-extrabold tracking-tight mb-4">
               <span className="purple-gradient-text">CodeAtlas</span>
@@ -449,7 +449,7 @@ export default function App() {
             <a href="#" className="hover:text-white transition-colors">Privacy</a>
             <a href="#" className="hover:text-white transition-colors">Terms</a>
           </div>
-          <p className="text-xs text-gray-600">© 2024 CodeAtlas AI Inc. All rights reserved.</p>
+          <p className="text-xs text-gray-600">© 2026 CodeAtlas AI Inc. All rights reserved.</p>
         </div>
       </footer>
     </div>
